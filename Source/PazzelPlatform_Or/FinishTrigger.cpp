@@ -4,6 +4,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Components/BoxComponent.h"
 #include "UObject/ConstructorHelpers.h"
+#include "PazeelPlatGameInstance.h"
 
 // Sets default values
 AFinishTrigger::AFinishTrigger()
@@ -26,6 +27,8 @@ AFinishTrigger::AFinishTrigger()
 
 	TriggerVolume->OnComponentBeginOverlap.AddDynamic(this, &AFinishTrigger::OnOverlapBegin);
 	TriggerVolume->OnComponentEndOverlap.AddDynamic(this, &AFinishTrigger::OnOverlapEnd);
+	NumOfPlayersFinished = 0;
+
 
 }
 
@@ -52,14 +55,29 @@ void AFinishTrigger::OnOverlapBegin(UPrimitiveComponent * OverlappedComp, AActor
 
 	UGameplayStatics::GetAllActorsOfClass(this, CharacterClass, Characters);
 
-
+	NumOfPlayersFinished++;
 	for (AActor* Character : Characters) {
 
 		if (!ensure(Character != nullptr))
 			return;
+		if (OtherActor->GetName() == Character->GetName()) {
 
+			UWorld* World = GetWorld();
+			if (!ensure(World != nullptr))
+				return;
+			
+			APlayerController* PlayerController = World->GetFirstPlayerController();
+			if (!ensure(PlayerController != nullptr))
+				return;
+
+			PlayerController->ClientTravel("/Game/MenuSystem/Maps/FinishMenuLevel", ETravelType::TRAVEL_Absolute);
+
+
+		}
 		UE_LOG(LogTemp, Warning, TEXT("Found Character: %s"), *Character->GetName());
 	}
+
+
 
 }
 

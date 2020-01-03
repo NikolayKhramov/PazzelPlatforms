@@ -24,6 +24,8 @@ class PAZZELPLATFORM_OR_API IMenuInterface
 public:
 	
 	virtual void Host() = 0;
-	virtual void Join(const FString& Adress)=0;
+	virtual void Join(uint32 Index) = 0;
 	virtual void LoadMainMenu() = 0;
+	virtual void RefreshServerList() = 0;
+	virtual void LoadFinishMenu() = 0;
 };

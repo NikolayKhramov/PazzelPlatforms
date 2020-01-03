@@ -3,6 +3,7 @@
 #include "PazeelPlatGameInstance.h"
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerController.h"
+#include "OnlineSessionSettings.h"
 
 #include "UObject/ConstructorHelpers.h"
 #include "Blueprint/UserWidget.h"
@@ -11,8 +12,9 @@
 #include "MenuSystem/MainMenuCPP.h"
 #include "MenuSystem/MenuWidget.h"
 #include "InGameMenu.h"
+#include "MenuSystem/FinishMenuWidget.h"
 
-
+const static FName SESSION_NAME = TEXT("My Session Game");
 
 void UPazeelPlatGameInstance::LoadMainMenu()
 {
@@ -31,7 +33,44 @@ void UPazeelPlatGameInstance::LoadMainMenu()
 
 }
 
-void UPazeelPlatGameInstance::LoadMenu()
+void UPazeelPlatGameInstance::RefreshServerList()
+{
+	SessionSearch = MakeShareable(new FOnlineSessionSearch());
+	if (SessionSearch.IsValid()) {
+		UE_LOG(LogTemp, Warning, TEXT("Start finding session "));
+		SessionSearch->bIsLanQuery = true;
+		SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
+	}
+
+}
+
+void UPazeelPlatGameInstance::LoadFinishMenu()
+{
+	APlayerController* PlayerController = GetFirstLocalPlayerController();
+	if (!ensure(PlayerController != nullptr))
+		return;
+
+	PlayerController->ClientTravel("Game/MenuSystem/Maps/FinishMenuLevel", ETravelType::TRAVEL_Absolute);
+}
+
+void UPazeelPlatGameInstance::LoadFinishMenuWidget()
+{
+	if (!ensure(FinishMenuClass!= nullptr))
+		return;
+
+
+	UFinishMenuWidget* FinishMenu = CreateWidget<UFinishMenuWidget>(this, FinishMenuClass);
+	if (!ensure(FinishMenu!= nullptr))
+		return;
+
+
+	FinishMenu->SetUp();
+
+	FinishMenu->SetMenuInterface(this);
+
+}
+
+void UPazeelPlatGameInstance::LoadMenuWidget()
 {
 	if (!ensure(MenuClass != nullptr))
 		return;
@@ -71,8 +110,33 @@ void UPazeelPlatGameInstance::InGameTeardownMenu()
 }
 
 
-void UPazeelPlatGameInstance::Host()
+void UPazeelPlatGameInstance::Host() {
+
+	if (SessionInterface.IsValid()) {
+		FNamedOnlineSession* ExistingSession = SessionInterface->GetNamedSession(SESSION_NAME);
+		if (ExistingSession != nullptr) {
+			SessionInterface->DestroySession(SESSION_NAME);
+		}
+		else {
+			CreateSession();
+		}
+	}
+
+}
+void UPazeelPlatGameInstance::OnCreateSessionComplete(FName SessionName, bool Success)
 {
+	
+	if (!Success) 
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Could not create session"));
+		return;
+	}
+
+	if (Menu != nullptr) {
+
+		Menu->Teardown();
+	}
+
 	UEngine* Engine = GetEngine();
 	if (!ensure(Engine != nullptr))
 		return;
@@ -83,12 +147,43 @@ void UPazeelPlatGameInstance::Host()
 
 	World->ServerTravel("/Game/ThirdPersonBP/Maps/PazzleMap?listen");
 
-	Menu->Teardown();
+	
 
 }
 
-void UPazeelPlatGameInstance::Join(const FString& Adress)
+void UPazeelPlatGameInstance::OnDestroySessionComplete(FName SessionName, bool Success)
 {
+	if (Success) {
+		CreateSession();
+	}
+
+}
+
+void UPazeelPlatGameInstance::OnFindSessionsComplete(bool Success)
+{
+	UE_LOG(LogTemp, Warning, TEXT("Finished finding session "));
+	if (Success && SessionSearch.IsValid()) {
+		//RefreshServerList();
+
+		TArray<FString> ServerNames;
+		for (auto& Result : SessionSearch->SearchResults) {
+			UE_LOG(LogTemp, Warning, TEXT("Found session:  %s"), *Result.GetSessionIdStr());
+			ServerNames.Add(Result.GetSessionIdStr());
+		}
+		Menu->SetServerListNames(ServerNames);
+	}
+}
+
+void UPazeelPlatGameInstance::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
+{
+	if (!SessionInterface.IsValid())
+		return;
+
+	FString Adress;
+	if(!SessionInterface->GetResolvedConnectString(SessionName, Adress)) {
+		UE_LOG(LogTemp, Warning, TEXT("Couldnt get connect string"));
+	}
+
 	UEngine* Engine = GetEngine();
 	if (!ensure(Engine != nullptr))
 		return;
@@ -100,12 +195,56 @@ void UPazeelPlatGameInstance::Join(const FString& Adress)
 
 	PlayerController->ClientTravel(Adress, ETravelType::TRAVEL_Absolute);
 
-	Menu->Teardown();
+}
+
+void UPazeelPlatGameInstance::CreateSession()
+{
+	if (SessionInterface.IsValid()) {
+		FOnlineSessionSettings SessionSettings;
+		SessionSettings.bIsLANMatch = true;
+		SessionSettings.bShouldAdvertise = true;
+		SessionSettings.NumPublicConnections = 2;
+
+		SessionInterface->CreateSession(0, SESSION_NAME, SessionSettings);
+	}
+}
+
+void UPazeelPlatGameInstance::Join(uint32 Index)
+{
+	
+
+	if (!SessionInterface.IsValid())
+		return;
+
+
+	if (Menu != nullptr) {
+		
+		Menu->Teardown();
+	}
+
+	SessionInterface->JoinSession(0, SESSION_NAME, SessionSearch->SearchResults[Index]);
+
 }
 
 void UPazeelPlatGameInstance::Init()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Found class %s"), *MenuClass -> GetName());
+	IOnlineSubsystem* SubSystem = IOnlineSubsystem::Get();
+	if (SubSystem != nullptr) {
+		UE_LOG(LogTemp, Warning, TEXT("Found subsystem %s"), *SubSystem->GetSubsystemName().ToString());
+		SessionInterface = SubSystem->GetSessionInterface();
+		if (SessionInterface.IsValid()) {
+			
+			SessionInterface->OnCreateSessionCompleteDelegates.AddUObject(this, &UPazeelPlatGameInstance::OnCreateSessionComplete);
+			SessionInterface->OnDestroySessionCompleteDelegates.AddUObject(this, &UPazeelPlatGameInstance::OnDestroySessionComplete);
+			SessionInterface->OnFindSessionsCompleteDelegates.AddUObject(this, &UPazeelPlatGameInstance::OnFindSessionsComplete);
+			SessionInterface->OnJoinSessionCompleteDelegates.AddUObject(this, &UPazeelPlatGameInstance::OnJoinSessionComplete);
+			
+		} 
+	}
+	else {
+		UE_LOG(LogTemp, Warning, TEXT("Found no subsystem"));
+
+	}
 
 }
 
@@ -124,5 +263,10 @@ UPazeelPlatGameInstance::UPazeelPlatGameInstance(const FObjectInitializer& Objec
 
 	InGameMenuClass = InGameMenuBPClass.Class;
 	
+	ConstructorHelpers::FClassFinder<UUserWidget> FinishBPClass(TEXT("/Game/MenuSystem/WBP_FinishMenu"));
+	if (!ensure(FinishBPClass.Class != nullptr))
+		return;
+
+	FinishMenuClass = FinishBPClass.Class;
 	
 }

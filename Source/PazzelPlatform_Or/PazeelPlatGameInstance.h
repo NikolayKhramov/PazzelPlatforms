@@ -4,7 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
+#include "OnlineSubsystem.h" 
 #include "MenuSystem/MenuInterface.h"
+#include "OnlineSessionInterface.h"
 #include "PazeelPlatGameInstance.generated.h"
 
 /**
@@ -19,10 +21,14 @@ public:
 
 	UPazeelPlatGameInstance(const FObjectInitializer& ObjectInitializer);
 
-	virtual void LoadMainMenu()override;
+	virtual void LoadMainMenu() override;
+	void RefreshServerList() override;
+	virtual void LoadFinishMenu() override;
 
 	UFUNCTION(BlueprintCallable)
-		void LoadMenu();
+		void LoadFinishMenuWidget();
+	UFUNCTION(BlueprintCallable)
+		void LoadMenuWidget();
 	UFUNCTION(BlueprintCallable)
 		void InGameLoadMenu();
 	UFUNCTION(BlueprintCallable)
@@ -31,7 +37,7 @@ public:
 	UFUNCTION(Exec)
 		void Host() override;
 	UFUNCTION(Exec)
-		void Join(const FString& Adress)override;
+		void Join(uint32 Index)override;
 
 protected:
 	
@@ -41,4 +47,15 @@ private:
 	TSubclassOf<UUserWidget> InGameMenuClass;
 	class UInGameMenu* InGameMenu;
 	class UMainMenuCPP* Menu;
+	TSubclassOf<UUserWidget> FinishMenuClass;
+
+	IOnlineSessionPtr SessionInterface;
+
+	TSharedPtr<class FOnlineSessionSearch> SessionSearch;
+
+	void OnCreateSessionComplete(FName SessionName, bool Success);
+	void OnDestroySessionComplete(FName SessionName, bool Success);
+	void OnFindSessionsComplete(bool Success);
+	void OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
+	void CreateSession();
 };

@@ -4,7 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+
 #include "FinishTrigger.generated.h"
+
 
 UCLASS()
 class PAZZELPLATFORM_OR_API AFinishTrigger : public AActor
@@ -35,13 +37,15 @@ public:
 
 private:
 	
+	int NumOfPlayersFinished;
+
 	UPROPERTY(VisibleAnyWhere)
 		class UBoxComponent* TriggerVolume;
 	UPROPERTY(EditAnyWhere)
 		TArray<AActor*> Characters;
 
 	TSubclassOf<AActor> CharacterClass;
-
+	
 
 
 };
